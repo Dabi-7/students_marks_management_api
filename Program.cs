@@ -1,4 +1,3 @@
-
 using MarksApi.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,10 +8,17 @@ var connectionString =
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString)
-           .UseSnakeCaseNamingConvention()
-);
+           .UseSnakeCaseNamingConvention());
+
+builder.Services.AddScoped<DbSeeder>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<DbSeeder>();
+    await seeder.SeedAsync();
+}
 
 app.MapGet("/", () => "Hello World!");
 

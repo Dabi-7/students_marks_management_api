@@ -119,7 +119,7 @@ public class DbSeeder
                 continue;
             }
 
-            var studentId = userSeed.StudentRegistrationNo is null
+            int? studentId = userSeed.StudentRegistrationNo is null
                 ? null
                 : studentMap[userSeed.StudentRegistrationNo].Id;
 

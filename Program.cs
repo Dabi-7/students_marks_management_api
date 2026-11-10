@@ -14,12 +14,11 @@ builder.Services.AddScoped<DbSeeder>();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+await using (var scope = app.Services.CreateAsyncScope())
 {
     var seeder = scope.ServiceProvider.GetRequiredService<DbSeeder>();
     await seeder.SeedAsync();
 }
-
 app.MapGet("/", () => "Hello World!");
 
 app.Run();

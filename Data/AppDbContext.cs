@@ -41,7 +41,10 @@ public class AppDbContext : DbContext
             entity.Property(s => s.CreatedAtUtc)
                 .IsRequired();
 
-            entity.HasCheckConstraint("CK_Students_Email_Lowercase", "lower(email) = email");
+            entity.ToTable(table =>
+                table.HasCheckConstraint(
+                    "CK_Students_Email_Lowercase",
+                    "lower(email) = email"));
         });
 
         modelBuilder.Entity<Course>(entity =>
@@ -64,7 +67,10 @@ public class AppDbContext : DbContext
             entity.Property(c => c.CreatedAtUtc)
                 .IsRequired();
 
-            entity.HasCheckConstraint("CK_Courses_CreditHours_Valid", "credit_hours BETWEEN 1 AND 4");
+            entity.ToTable(table =>
+                table.HasCheckConstraint(
+                    "CK_Courses_CreditHours_Valid",
+                    "credit_hours BETWEEN 1 AND 4"));
         });
 
         modelBuilder.Entity<Enrollment>(entity =>
@@ -86,7 +92,10 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => new { e.StudentId, e.CourseId })
                 .IsUnique();
 
-            entity.HasCheckConstraint("CK_Enrollments_Mark_Valid", "mark IS NULL OR (mark >= 0 AND mark <= 100)");
+            entity.ToTable(table =>
+                table.HasCheckConstraint(
+                    "CK_Enrollments_Mark_Valid",
+                    "mark IS NULL OR (mark >= 0 AND mark <= 100)"));
 
             entity.HasOne(e => e.Student)
                 .WithMany(s => s.Enrollments)
@@ -119,10 +128,18 @@ public class AppDbContext : DbContext
             entity.HasOne(u => u.Student)
                 .WithMany()
                 .HasForeignKey(u => u.StudentId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasCheckConstraint("CK_Users_Role_Valid", "role IN ('Teacher', 'Student')");
-            entity.HasCheckConstraint("CK_Users_StudentRole_Requires_Student", "role <> 'Student' OR student_id IS NOT NULL");
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_Users_Role_Valid",
+                    "role IN ('Teacher', 'Student')");
+
+                table.HasCheckConstraint(
+                    "CK_Users_StudentRole_Requires_Student",
+                    "role <> 'Student' OR student_id IS NOT NULL");
+            });
         });
     }
 }

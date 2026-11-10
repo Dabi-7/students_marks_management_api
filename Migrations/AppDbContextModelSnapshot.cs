@@ -227,7 +227,7 @@ namespace MarksApi.Migrations
                     b.HasOne("MarksApi.Entities.Student", "Student")
                         .WithMany()
                         .HasForeignKey("StudentId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_users_students_student_id");
 
                     b.Navigation("Student");

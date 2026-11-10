@@ -1,13 +1,16 @@
+
 using MarksApi.Data;
-using MarksApi.Entities;
 using Microsoft.EntityFrameworkCore;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString =
+    builder.Configuration.GetConnectionString("Database");
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
-           .UseSnakeCaseNamingConvention());
+    options.UseNpgsql(connectionString)
+           .UseSnakeCaseNamingConvention()
+);
 
 var app = builder.Build();
 

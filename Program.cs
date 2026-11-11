@@ -1,4 +1,5 @@
 using MarksApi.Data;
+using MarksApi.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,6 +12,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
            .UseSnakeCaseNamingConvention());
 
 builder.Services.AddScoped<DbSeeder>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 var app = builder.Build();
 

@@ -24,5 +24,71 @@ public class AuthService : IAuthService
         _passwordHasher = new PasswordHasher<User>();
     }
 
-    // LoginAsync will be implemented here next.
+    public async Task<AuthResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+        {
+            return new AuthResult
+            {
+                Success = false,
+                Message = "Invalid login request."
+            };
+        }
+
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.Username == request.Username, cancellationToken);
+
+        if (user is null)
+        {
+            return new AuthResult
+            {
+                Success = false,
+                Message = "Invalid username or password."
+            };
+        }
+
+        var verificationResult = _passwordHasher.VerifyHashedPassword(
+            user,
+            user.PasswordHash,
+            request.Password);
+
+        if (verificationResult == PasswordVerificationResult.Failed)
+        {
+            return new AuthResult
+            {
+                Success = false,
+                Message = "Invalid username or password."
+            };
+        }
+
+        var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured.");
+        var jwtIssuer = _configuration["Jwt:Issuer"] ?? "MarksApi";
+        var jwtAudience = _configuration["Jwt:Audience"] ?? "MarksApiUsers";
+        var jwtExpiryHours = _configuration.GetValue<int?>("Jwt:ExpiryHours") ?? 1;
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Name, user.Username),
+            new Claim(ClaimTypes.Role, user.Role)
+        };
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: jwtIssuer,
+            audience: jwtAudience,
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(jwtExpiryHours),
+            signingCredentials: credentials);
+
+        return new AuthResult
+        {
+            Success = true,
+            Token = new JwtSecurityTokenHandler().WriteToken(token),
+            Username = user.Username,
+            Role = user.Role
+        };
+    }
 }

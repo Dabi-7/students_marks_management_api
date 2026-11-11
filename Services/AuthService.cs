@@ -64,7 +64,7 @@ public class AuthService : IAuthService
         var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured.");
         var jwtIssuer = _configuration["Jwt:Issuer"] ?? "MarksApi";
         var jwtAudience = _configuration["Jwt:Audience"] ?? "MarksApiUsers";
-        var jwtExpiryHours = _configuration.GetValue<int?>("Jwt:ExpiryHours") ?? 1;
+        var jwtExpiryMinutes = _configuration.GetValue<int?>("Jwt:ExpiryMinutes") ?? 60;
 
         var claims = new[]
         {

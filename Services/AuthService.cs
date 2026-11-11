@@ -62,6 +62,11 @@ public class AuthService : IAuthService
         }
 
         var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured.");
+        if (jwtKey.Length < 32)
+        {
+            throw new InvalidOperationException("JWT key must be at least 32 characters long.");
+        }
+
         var jwtIssuer = _configuration["Jwt:Issuer"] ?? "MarksApi";
         var jwtAudience = _configuration["Jwt:Audience"] ?? "MarksApiUsers";
         var jwtExpiryMinutes = _configuration.GetValue<int?>("Jwt:ExpiryMinutes") ?? 60;
@@ -80,7 +85,7 @@ public class AuthService : IAuthService
             issuer: jwtIssuer,
             audience: jwtAudience,
             claims: claims,
-            expires: DateTime.UtcNow.AddHours(jwtExpiryHours),
+            expires: DateTime.UtcNow.AddMinutes(jwtExpiryMinutes),
             signingCredentials: credentials);
 
         return new AuthResult

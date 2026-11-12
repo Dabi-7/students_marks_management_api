@@ -62,7 +62,7 @@ public class AuthService : IAuthService
         }
 
         var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured.");
-        if (jwtKey.Length < 32)
+        if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
         {
             throw new InvalidOperationException("JWT key must be at least 32 characters long.");
         }

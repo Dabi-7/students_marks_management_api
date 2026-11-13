@@ -39,4 +39,18 @@ public class AuthController : ControllerBase
             role = result.Role
         });
     }
+
+
+    [Authorize]
+    [HttpGet("test-token")]
+    public IActionResult TestToken()
+    {
+        return Ok(new
+        {
+            message = "JWT authentication successful.",
+            username = User.Identity?.Name,
+            role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+        });
+    }
+
 }

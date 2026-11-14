@@ -8,6 +8,7 @@ using MarksApi.Data;
 using MarksApi.DTOs;
 using MarksApi.Entities;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
 
 namespace MarksApi.Services;
 
@@ -16,18 +17,21 @@ public class AuthService : IAuthService
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly PasswordHasher<User> _passwordHasher;
+    private readonly ILogger<AuthService> _logger;
 
-    public AuthService(AppDbContext context, IConfiguration configuration)
+    public AuthService(AppDbContext context, IConfiguration configuration, ILogger<AuthService> logger)
     {
         _context = context;
         _configuration = configuration;
         _passwordHasher = new PasswordHasher<User>();
+        _logger = logger;
     }
 
     public async Task<AuthResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         if (request is null)
         {
+            _logger.LogWarning("Login attempted with a null request.");
             return new AuthResult
             {
                 Success = false,
@@ -40,6 +44,7 @@ public class AuthService : IAuthService
 
         if (user is null)
         {
+            _logger.LogWarning("Failed login attempt for username {Username}.", request.Username);
             return new AuthResult
             {
                 Success = false,
@@ -54,12 +59,15 @@ public class AuthService : IAuthService
 
         if (verificationResult == PasswordVerificationResult.Failed)
         {
+            _logger.LogWarning("Failed login attempt for username {Username}.", request.Username);
             return new AuthResult
             {
                 Success = false,
                 Message = "Invalid username or password."
             };
         }
+
+        _logger.LogInformation("User {Username} logged in successfully.", user.Username);
 
         var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured.");
         if (Encoding.UTF8.GetByteCount(jwtKey) < 32)

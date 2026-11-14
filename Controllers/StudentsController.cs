@@ -21,37 +21,66 @@ public class StudentsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetStudents(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetStudents(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null,
+        [FromQuery] string? sortBy = "id",
+        [FromQuery] string? sortOrder = "asc",
+        CancellationToken cancellationToken = default)
     {
-        if (await IsTeacherAsync(cancellationToken))
-        {
-            var students = await _context.Students
-                .AsNoTracking()
-                .OrderBy(s => s.Id)
-                .Select(s => MapToResponse(s))
-                .ToListAsync(cancellationToken);
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
-            return Ok(students);
+        IQueryable<Student> query = _context.Students.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var normalized = search.Trim();
+            query = query.Where(s =>
+                s.RegistrationNo.Contains(normalized) ||
+                s.FullName.Contains(normalized) ||
+                s.Email.Contains(normalized));
         }
 
-        var studentId = await GetCurrentStudentIdAsync(cancellationToken);
-        if (studentId is null)
+        var validSortFields = new Dictionary<string, Func<IQueryable<Student>, IQueryable<Student>>>(StringComparer.OrdinalIgnoreCase)
         {
-            return Forbid();
+            ["id"] = q => q.OrderBy(s => s.Id),
+            ["registrationno"] = q => q.OrderBy(s => s.RegistrationNo),
+            ["fullname"] = q => q.OrderBy(s => s.FullName),
+            ["email"] = q => q.OrderBy(s => s.Email),
+            ["createdatutc"] = q => q.OrderBy(s => s.CreatedAtUtc)
+        };
+
+        if (!validSortFields.TryGetValue(sortBy ?? "id", out var sortFunc))
+        {
+            return BadRequest(new { message = "Unsupported sort field. Allowed values: id, registrationNo, fullName, email, createdAtUtc." });
         }
 
-        var student = await _context.Students
-            .AsNoTracking()
-            .Where(s => s.Id == studentId.Value)
+        query = sortFunc(query);
+
+        if (string.Equals(sortOrder, "desc", StringComparison.OrdinalIgnoreCase))
+        {
+            query = ApplyDescending(query, sortBy ?? "id");
+        }
+
+        var totalRecords = await query.CountAsync(cancellationToken);
+        var totalPages = (int)Math.Ceiling(totalRecords / (double)pageSize);
+
+        var students = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(s => MapToResponse(s))
-            .FirstOrDefaultAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
 
-        if (student is null)
+        return Ok(new PaginatedResult<StudentResponseDto>
         {
-            return NotFound();
-        }
-
-        return Ok(new[] { student });
+            Page = page,
+            PageSize = pageSize,
+            TotalRecords = totalRecords,
+            TotalPages = totalPages,
+            Data = students
+        });
     }
 
     [HttpGet("{id:int}")]
@@ -296,6 +325,19 @@ public class StudentsController : ControllerBase
             FullName = student.FullName,
             Email = student.Email,
             CreatedAtUtc = student.CreatedAtUtc
+        };
+    }
+
+    private static IQueryable<Student> ApplyDescending(IQueryable<Student> query, string sortBy)
+    {
+        return sortBy.ToLowerInvariant() switch
+        {
+            "id" => query.OrderByDescending(s => s.Id),
+            "registrationno" => query.OrderByDescending(s => s.RegistrationNo),
+            "fullname" => query.OrderByDescending(s => s.FullName),
+            "email" => query.OrderByDescending(s => s.Email),
+            "createdatutc" => query.OrderByDescending(s => s.CreatedAtUtc),
+            _ => query
         };
     }
 }

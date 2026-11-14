@@ -14,18 +14,63 @@ namespace MarksApi.Controllers;
 public class CoursesController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ILogger<CoursesController> _logger;
 
-    public CoursesController(AppDbContext context)
+    public CoursesController(AppDbContext context, ILogger<CoursesController> logger)
     {
         _context = context;
+        _logger = logger;
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetCourses(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetCourses(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null,
+        [FromQuery] string? sortBy = "id",
+        [FromQuery] string? sortOrder = "asc",
+        CancellationToken cancellationToken = default)
     {
-        var courses = await _context.Courses
-            .AsNoTracking()
-            .OrderBy(c => c.Id)
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        IQueryable<Course> query = _context.Courses.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var normalized = search.Trim();
+            query = query.Where(c =>
+                c.Code.Contains(normalized) ||
+                c.Title.Contains(normalized));
+        }
+
+        var validSortFields = new Dictionary<string, Func<IQueryable<Course>, IQueryable<Course>>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["id"] = q => q.OrderBy(c => c.Id),
+            ["code"] = q => q.OrderBy(c => c.Code),
+            ["title"] = q => q.OrderBy(c => c.Title),
+            ["credithours"] = q => q.OrderBy(c => c.CreditHours),
+            ["createdatutc"] = q => q.OrderBy(c => c.CreatedAtUtc)
+        };
+
+        if (!validSortFields.TryGetValue(sortBy ?? "id", out var sortFunc))
+        {
+            return BadRequest(new { message = "Unsupported sort field. Allowed values: id, code, title, creditHours, createdAtUtc." });
+        }
+
+        query = sortFunc(query);
+
+        if (string.Equals(sortOrder, "desc", StringComparison.OrdinalIgnoreCase))
+        {
+            query = ApplyDescending(query, sortBy ?? "id");
+        }
+
+        var totalRecords = await query.CountAsync(cancellationToken);
+        var totalPages = totalRecords == 0 ? 0 : (int)Math.Ceiling(totalRecords / (double)pageSize);
+
+        var courses = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(c => new CourseResponseDto
             {
                 Id = c.Id,
@@ -36,7 +81,14 @@ public class CoursesController : ControllerBase
             })
             .ToListAsync(cancellationToken);
 
-        return Ok(courses);
+        return Ok(new PaginatedResult<CourseResponseDto>
+        {
+            Page = page,
+            PageSize = pageSize,
+            TotalRecords = totalRecords,
+            TotalPages = totalPages,
+            Data = courses
+        });
     }
 
     [HttpGet("{id:int}")]
@@ -155,9 +207,11 @@ public class CoursesController : ControllerBase
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Course {CourseCode} created successfully.", course.Code);
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
+            _logger.LogError(ex, "Failed to create course with code {CourseCode} due to a uniqueness conflict.", code);
             return Conflict(new { message = "A course with the same code already exists." });
         }
 
@@ -211,9 +265,11 @@ public class CoursesController : ControllerBase
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Course {CourseId} updated successfully.", course.Id);
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
+            _logger.LogError(ex, "Failed to update course {CourseId} due to a uniqueness conflict.", id);
             return Conflict(new { message = "Another course already uses this code." });
         }
 
@@ -240,6 +296,7 @@ public class CoursesController : ControllerBase
 
         _context.Courses.Remove(course);
         await _context.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Course {CourseId} deleted successfully.", id);
 
         return NoContent();
     }
@@ -260,5 +317,18 @@ public class CoursesController : ControllerBase
     {
         return exception.InnerException is PostgresException postgresException
                && postgresException.SqlState == PostgresErrorCodes.UniqueViolation;
+    }
+
+    private static IQueryable<Course> ApplyDescending(IQueryable<Course> query, string sortBy)
+    {
+        return sortBy.ToLowerInvariant() switch
+        {
+            "id" => query.OrderByDescending(c => c.Id),
+            "code" => query.OrderByDescending(c => c.Code),
+            "title" => query.OrderByDescending(c => c.Title),
+            "credithours" => query.OrderByDescending(c => c.CreditHours),
+            "createdatutc" => query.OrderByDescending(c => c.CreatedAtUtc),
+            _ => query
+        };
     }
 }

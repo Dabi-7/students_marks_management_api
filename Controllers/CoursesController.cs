@@ -59,6 +59,58 @@ public class CoursesController : ControllerBase
     }
 
     [Authorize(Roles = "Teacher")]
+    [HttpGet("{id:int}/statistics")]
+    public async Task<IActionResult> GetCourseStatistics(int id, CancellationToken cancellationToken)
+    {
+        var course = await _context.Courses
+            .AsNoTracking()
+            .Where(c => c.Id == id)
+            .Select(c => new { c.Id, c.Code, c.Title })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (course is null)
+        {
+            return NotFound();
+        }
+
+        var aggregate = await _context.Enrollments
+            .AsNoTracking()
+            .Where(e => e.CourseId == id)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                Graded = g.Count(e => e.Mark.HasValue),
+                Average = g.Where(e => e.Mark.HasValue).Average(e => (double?)e.Mark),
+                Highest = g.Where(e => e.Mark.HasValue).Max(e => (int?)e.Mark),
+                Lowest = g.Where(e => e.Mark.HasValue).Min(e => (int?)e.Mark),
+                Passed = g.Count(e => e.Mark.HasValue && e.Mark >= 50),
+                Failed = g.Count(e => e.Mark.HasValue && e.Mark < 50)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var total = aggregate?.Total ?? 0;
+        var graded = aggregate?.Graded ?? 0;
+
+        var response = new CourseStatisticsDto
+        {
+            CourseId = course.Id,
+            CourseCode = course.Code,
+            CourseTitle = course.Title,
+            TotalEnrolledStudents = total,
+            GradedStudents = graded,
+            AverageMarks = aggregate?.Average,
+            HighestMarks = aggregate?.Highest,
+            LowestMarks = aggregate?.Lowest,
+            PassedStudents = aggregate?.Passed ?? 0,
+            FailedStudents = aggregate?.Failed ?? 0,
+            UngradedStudents = total - graded
+        };
+
+        return Ok(response);
+    }
+
+    [Authorize(Roles = "Teacher")]
     [HttpPost]
     public async Task<IActionResult> CreateCourse([FromBody] CourseCreateDto dto, CancellationToken cancellationToken)
     {

@@ -83,6 +83,77 @@ public class StudentsController : ControllerBase
         return currentStudent is null ? NotFound() : Ok(currentStudent);
     }
 
+    [HttpGet("{id:int}/transcript")]
+    public async Task<IActionResult> GetTranscript(int id, CancellationToken cancellationToken)
+    {
+        if (!await IsTeacherAsync(cancellationToken))
+        {
+            var studentId = await GetCurrentStudentIdAsync(cancellationToken);
+            if (studentId is null || studentId.Value != id)
+            {
+                return Forbid();
+            }
+        }
+
+        var student = await _context.Students
+            .AsNoTracking()
+            .Where(s => s.Id == id)
+            .Select(s => new
+            {
+                s.Id,
+                s.RegistrationNo,
+                s.FullName
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (student is null)
+        {
+            return NotFound();
+        }
+
+        var courses = await _context.Enrollments
+            .AsNoTracking()
+            .Where(e => e.StudentId == id)
+            .OrderBy(e => e.Course.Code)
+            .Select(e => new TranscriptCourseDto
+            {
+                CourseId = e.CourseId,
+                CourseCode = e.Course.Code,
+                CourseTitle = e.Course.Title,
+                CreditHours = e.Course.CreditHours,
+                Mark = e.Mark,
+                Status = e.Mark.HasValue
+                    ? (e.Mark >= 50 ? "Pass" : "Fail")
+                    : "Not Graded"
+            })
+            .ToListAsync(cancellationToken);
+
+        var gradedCourses = courses.Where(c => c.Mark.HasValue).ToList();
+        double? weightedAverage = null;
+
+        if (gradedCourses.Count > 0)
+        {
+            var weightedSum = gradedCourses.Sum(c => c.Mark!.Value * c.CreditHours);
+            var totalCredits = gradedCourses.Sum(c => c.CreditHours);
+
+            if (totalCredits > 0)
+            {
+                weightedAverage = Math.Round((double)weightedSum / totalCredits, 2);
+            }
+        }
+
+        var transcript = new StudentTranscriptDto
+        {
+            StudentId = student.Id,
+            RegistrationNo = student.RegistrationNo,
+            StudentName = student.FullName,
+            Courses = courses,
+            WeightedAverage = weightedAverage
+        };
+
+        return Ok(transcript);
+    }
+
     [Authorize(Roles = "Teacher")]
     [HttpPost]
     public async Task<IActionResult> CreateStudent([FromBody] StudentCreateDto dto, CancellationToken cancellationToken)
